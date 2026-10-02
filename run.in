@@ -1,0 +1,81 @@
+     
+units real 
+dimension 3
+boundary p p p
+atom_style full
+box tilt   large
+
+variable dt equal 1
+variable temp equal 298.15 
+
+variable nevery equal 1                
+variable nrepeat equal 1               
+variable nfreq equal ${nevery}*${nrepeat}
+
+timestep ${dt}
+
+bond_style      harmonic 
+angle_style     hybrid cosine/periodic fourier harmonic 
+dihedral_style  harmonic
+improper_style  fourier
+
+pair_style lj/cut/tip4p/long 5 6 8 11 0.105 12.5
+
+special_bonds   lj/coul 0.0 0.0 1.0
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+read_data rho0.25c1clean.data
+
+kspace_style pppm/tip4p  1.0e-5 
+
+group mof type 1 2 3 4
+group h2o type 5 6 
+
+# rigid water
+fix myshk h2o shake 1.0e-4 200 0 b 8 a 11
+
+# fix center of mass,avoiding shift
+fix mymom all momentum 500 linear 1 1 1
+
+velocity        all create ${temp} 59762 mom yes rot yes
+
+fix mynvt all nvt temp ${temp} ${temp} 100
+
+run 500000
+
+reset_timestep  0
+# viscosity
+compute        peratom h2o stress/atom NULL
+compute        p h2o reduce sum c_peratom[4] c_peratom[5] c_peratom[6]
+
+variable       press equal -(c_p[1]+c_p[2]+c_p[3])/(3*vol*0.62)
+variable       pressxy equal -(c_p[1])/(vol*0.62)
+variable       pressxz equal -(c_p[2])/(vol*0.62)
+variable       pressyz equal -(c_p[3])/(vol*0.62)
+
+fix          SS h2o ave/time 1 1 1 &
+             v_pressxy v_pressxz v_pressyz file press.dat
+
+# diel
+
+compute M all dipole/tip4p
+
+variable Mx equal c_M[1] 
+variable My equal c_M[2] 
+variable Mz equal c_M[3] 
+
+fix          dip all ave/time 1 1 1 &
+             v_Mx v_My v_Mz file dipole.dat
+
+# msd
+
+dump MSD h2o custom 1000 msdh2o.lammpstrj xu yu zu
+
+thermo_style custom step temp press vol density lx
+
+thermo 1000
+
+run 10000000
+
+
